@@ -26,17 +26,24 @@ module Resque
   # Accepts a 'hostname:port' string or a Redis server.
   def mongo=(server)
     case server
+    when Hash
+      host, port = server['host'], server['port']
+      @con = Mongo::Connection.new(host, port)
+      if server['username'] && server['password']
+        @con.add_auth('monque', server['username'], server['password'])
+        @con.apply_saved_authentication
+      end
     when String
       host, port = server.split(':')
       @con = Mongo::Connection.new(host, port)
-      @db = @con.db('monque')
-      @mongo = @db.collection('monque')
-      @workers = @db.collection('workers')
-      @failures = @db.collection('failures')
-      @stats = @db.collection('stats')
-
-      add_indexes
     end
+    @db = @con.db('monque')
+    @mongo = @db.collection('monque')
+    @workers = @db.collection('workers')
+    @failures = @db.collection('failures')
+    @stats = @db.collection('stats')
+    
+    add_indexes
   end
 
 
