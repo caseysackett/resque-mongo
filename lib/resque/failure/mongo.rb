@@ -13,7 +13,16 @@ module Resque
           :worker    => worker.to_s,
           :queue     => queue
         }
-        Resque.mongo_failures << data
+        begin
+          Resque.mongo_failures << data
+        rescue Exception => e
+          data[:payload] = self.class.process_paypload(payload)
+          Resque.mongo_failures << data
+        end
+      end
+
+      def self.process_paypload(p)
+        p.to_s
       end
 
       def self.count
