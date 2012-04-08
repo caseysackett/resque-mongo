@@ -1,11 +1,5 @@
 require 'mongo'
 
-begin
-  require 'yajl'
-rescue LoadError
-  require 'json'
-end
-
 require 'resque/version'
 
 require 'resque/errors'
@@ -18,6 +12,7 @@ require 'resque/stat'
 require 'resque/job'
 require 'resque/worker'
 require 'resque/plugin'
+require 'resque/queue'
 
 module Resque
   include Helpers
@@ -86,9 +81,7 @@ module Resque
 
   # Set a proc that will be called in the parent process before the
   # worker forks for the first time.
-  def before_first_fork=(before_first_fork)
-    @before_first_fork = before_first_fork
-  end
+  attr_writer :before_first_fork
 
   # The `before_fork` hook will be run in the **parent** process
   # before every job, so be careful- any changes you make will be
@@ -101,9 +94,7 @@ module Resque
   end
 
   # Set the before_fork proc.
-  def before_fork=(before_fork)
-    @before_fork = before_fork
-  end
+  attr_writer :before_fork
 
   # The `after_fork` hook will be run in the child process and is passed
   # the current job. Any changes you make, therefore, will only live as
@@ -116,13 +107,18 @@ module Resque
   end
 
   # Set the after_fork proc.
-  def after_fork=(after_fork)
-    @after_fork = after_fork
-  end
+  attr_writer :after_fork
 
   def to_s
     "Mongo Client connected to #{@con.host}"
   end
+
+  attr_accessor :inline
+
+  # If 'inline' is true Resque will call #perform method inline
+  # without queuing it into Redis and without any Resque callbacks.
+  # The 'inline' is false Resque jobs will be put in queue regularly.
+  alias :inline? :inline
 
   def add_indexes
     @mongo.create_index :queue
@@ -227,6 +223,31 @@ module Resque
   # This method is considered part of the `stable` API.
   def enqueue(klass, *args)
     Job.create(queue_from_class(klass), klass, *args)
+  end
+
+  # Just like `enqueue` but allows you to specify the queue you want to
+  # use. Runs hooks.
+  #
+  # `queue` should be the String name of the queue you're targeting.
+  #
+  # Returns true if the job was queued, nil if the job was rejected by a
+  # before_enqueue hook.
+  #
+  # This method is considered part of the `stable` API.
+  def enqueue_to(queue, klass, *args)
+    # Perform before_enqueue hooks. Don't perform enqueue if any hook returns false
+    before_hooks = Plugin.before_enqueue_hooks(klass).collect do |hook|
+      klass.send(hook, *args)
+    end
+    return nil if before_hooks.any? { |result| result == false }
+
+    Job.create(queue, klass, *args)
+
+    Plugin.after_enqueue_hooks(klass).each do |hook|
+      klass.send(hook, *args)
+    end
+
+    return true
   end
 
   # This method can be used to conveniently remove a job from a queue.

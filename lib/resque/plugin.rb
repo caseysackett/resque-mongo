@@ -42,5 +42,25 @@ module Resque
     def failure_hooks(job)
       job.methods.grep(/^on_failure/).sort
     end
+
+        # Given an object, returns a list `after_enqueue` hook names.
+    def after_enqueue_hooks(job)
+      job.methods.grep(/^after_enqueue/).sort
+    end
+
+    # Given an object, returns a list `before_enqueue` hook names.
+    def before_enqueue_hooks(job)
+      job.methods.grep(/^before_enqueue/).sort
+    end
+
+    # Given an object, returns a list `after_dequeue` hook names.
+    def after_dequeue_hooks(job)
+      job.methods.grep(/^after_dequeue/).sort
+    end
+
+    # Given an object, returns a list `before_dequeue` hook names.
+    def before_dequeue_hooks(job)
+      job.methods.grep(/^before_dequeue/).sort
+    end
   end
 end

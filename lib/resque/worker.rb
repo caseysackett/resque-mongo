@@ -94,28 +94,30 @@ module Resque
     # 2. Work loop: Jobs are pulled from a queue and processed.
     # 3. Teardown:  This worker is unregistered.
     #
-    # Can be passed an integer representing the polling frequency.
+    # Can be passed a float representing the polling frequency.
     # The default is 5 seconds, but for a semi-active site you may
     # want to use a smaller value.
     #
     # Also accepts a block which will be passed the job as soon as it
     # has completed processing. Useful for testing.
-    def work(interval = 5, &block)
+    def work(interval = 5.0, &block)
+      interval = Float(interval)
       $0 = "resque: Starting"
       startup
 
       loop do
-        break if @shutdown
+        break if shutdown?
 
-        if not @paused and job = reserve
+        if not paused? and job = reserve
           log "got: #{job.inspect}"
-          run_hook :before_fork
+          job.worker = self
+          run_hook :before_fork, job
           working_on job
 
           if @child = fork
-            rand # Reseeding
+            srand # Reseeding
             procline "Forked #{@child} at #{Time.now.to_i}"
-            Process.wait
+            Process.wait(@child)
           else
             procline "Processing #{job.queue} since #{Time.now.to_i}"
             perform(job, &block)
@@ -125,10 +127,10 @@ module Resque
           done_working
           @child = nil
         else
-          break if interval.to_i == 0
-          log! "Sleeping for #{interval.to_i}"
-          procline @paused ? "Paused" : "Waiting for #{@queues.join(',')}"
-          sleep interval.to_i
+          break if interval.zero?
+          log! "Sleeping for #{interval} seconds"
+          procline paused? ? "Paused" : "Waiting for #{@queues.join(',')}"
+          sleep interval
         end
       end
 
@@ -141,6 +143,7 @@ module Resque
     def process(job = nil, &block)
       return unless job ||= reserve
 
+      job.worker = self
       working_on job
       perform(job, &block)
     ensure
@@ -154,7 +157,11 @@ module Resque
         job.perform
       rescue Object => e
         log "#{job.inspect} failed: #{e.inspect}"
-        job.fail(e)
+        begin
+          job.fail(e)
+        rescue Object => e
+          log "Received exception when reporting failure: #{e.inspect}"
+        end
         failed!
       else
         log "done: #{job.inspect}"
@@ -168,20 +175,24 @@ module Resque
     def reserve
       queues.each do |queue|
         log! "Checking #{queue}"
-        if job = Resque::Job.reserve(queue)
+        if job = Resque.reserve(queue)
           log! "Found job on #{queue}"
           return job
         end
       end
 
       nil
+    rescue Exception => e
+      log "Error reserving job: #{e.inspect}"
+      log e.backtrace.join("\n")
+      raise e
     end
 
     # Returns a list of queues to use when searching for a job.
     # A splat ("*") means you want every queue (in alpha order) - this
     # can be useful for dynamically adding new queues.
     def queues
-      @queues[0] == "*" ? Resque.queues.sort : @queues
+      @queues.map {|queue| queue == "*" ? Resque.queues.sort : queue }.flatten.uniq
     end
 
     # Not every platform supports fork. Here we do our magic to
@@ -262,6 +273,11 @@ module Resque
       kill_child
     end
 
+    # Should this worker shutdown as soon as current job is finished?
+    def shutdown?
+      @shutdown
+    end
+
     # Kills the forked child immediately, without remorse. The job it
     # is processing will not be completed.
     def kill_child
@@ -274,6 +290,11 @@ module Resque
           shutdown
         end
       end
+    end
+
+    # are we paused?
+    def paused?
+      @paused
     end
 
     # Stop processing jobs after the current one has completed (if we're
@@ -303,7 +324,7 @@ module Resque
       all_workers = Worker.all
       known_workers = worker_pids unless all_workers.empty?
       all_workers.each do |worker|
-        host, pid, queues = worker.to_s.split(':')
+        host, pid, queues = worker.id.split(':')
         next unless host == hostname
         next if known_workers.include?(pid)
         log! "Pruning dead worker: #{worker}"
@@ -353,7 +374,7 @@ module Resque
       data = encode \
         :queue   => job.queue,
         :run_at  => Time.now.to_s,
-      :payload => job.payload
+        :payload => job.payload
       working_on = {'working_on' => data}
       mongo_workers.update({:worker => self.to_s},  {'$set' => working_on}, :upsert => true )
     end
@@ -447,12 +468,43 @@ module Resque
       @hostname ||= `hostname`.chomp
     end
 
-    # Returns an array of string pids of all the other workers on this
+    # Returns Integer PID of running worker
+    def pid
+      Process.pid
+    end
+
+    # Returns an Array of string pids of all the other workers on this
     # machine. Useful when pruning dead workers on startup.
     def worker_pids
-      `ps -A -o pid,command | grep [r]esque`.split("\n").map do |line|
+      if RUBY_PLATFORM =~ /solaris/
+        solaris_worker_pids
+      else
+        linux_worker_pids
+      end
+    end
+
+    # Find Resque worker pids on Linux and OS X.
+    #
+    # Returns an Array of string pids of all the other workers on this
+    # machine. Useful when pruning dead workers on startup.
+    def linux_worker_pids
+      `ps -A -o pid,command | grep "[r]esque" | grep -v "resque-web"`.split("\n").map do |line|
         line.split(' ')[0]
       end
+    end
+
+    # Find Resque worker pids on Solaris.
+    #
+    # Returns an Array of string pids of all the other workers on this
+    # machine. Useful when pruning dead workers on startup.
+    def solaris_worker_pids
+      `ps -A -o pid,comm | grep "[r]uby" | grep -v "resque-web"`.split("\n").map do |line|
+        real_pid = line.split(' ')[0]
+        pargs_command = `pargs -a #{real_pid} 2>/dev/null | grep [r]esque | grep -v "resque-web"`
+        if pargs_command.split(':')[1] == " resque-#{Resque::Version}"
+          real_pid
+        end
+      end.compact
     end
 
     # Given a string, sets the procline ($0) and logs.
