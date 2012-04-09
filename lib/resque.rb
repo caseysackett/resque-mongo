@@ -141,7 +141,6 @@ module Resque
   # Pushes a job onto a queue. Queue name should be a string and the
   # item should be any JSON-able Ruby object.
   def push(queue, item)
-    watch_queue(queue)
     mongo << { :queue => queue.to_s, :item => encode(item) }
   end
 
@@ -195,13 +194,6 @@ module Resque
   def remove_queue(queue)
     mongo.remove(:queue => queue)
   end
-
-  # Used internally to keep track of which queues we've created.
-  # Don't call this directly.
-  def watch_queue(queue)
-#    redis.sadd(:queues, queue.to_s)
-  end
-
 
   #
   # job shortcuts
