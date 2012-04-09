@@ -288,6 +288,22 @@ module Resque
     Job.reserve(queue)
   end
 
+    # Validates if the given klass could be a valid Resque job
+  #
+  # If no queue can be inferred this method will raise a `Resque::NoQueueError`
+  #
+  # If given klass is nil this method will raise a `Resque::NoClassError`
+  def validate(klass, queue = nil)
+    queue ||= queue_from_class(klass)
+
+    if !queue
+      raise NoQueueError.new("Jobs must be placed onto a queue.")
+    end
+
+    if klass.to_s.empty?
+      raise NoClassError.new("Jobs must be given a class.")
+    end
+  end
 
   #
   # worker shortcuts
