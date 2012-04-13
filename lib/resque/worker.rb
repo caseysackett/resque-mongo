@@ -324,7 +324,7 @@ module Resque
       all_workers = Worker.all
       known_workers = worker_pids unless all_workers.empty?
       all_workers.each do |worker|
-        host, pid, queues = worker.id.split(':')
+        host, pid, queues = worker.to_s.split(':')
         next unless host == hostname
         next if known_workers.include?(pid)
         log! "Pruning dead worker: #{worker}"
