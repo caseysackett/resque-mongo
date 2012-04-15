@@ -13,6 +13,7 @@ namespace :resque do
 
     begin
       worker = Resque::Worker.new(*queues)
+      worker.cant_fork = ENV['CANT_FORK']
       worker.verbose = ENV['LOGGING'] || ENV['VERBOSE']
       worker.very_verbose = ENV['VVERBOSE']
     rescue Resque::NoQueueError
