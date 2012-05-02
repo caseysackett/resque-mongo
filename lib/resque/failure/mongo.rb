@@ -45,6 +45,11 @@ module Resque
         Resque.mongo_failures.update({:_id => item['_id']}, item)
         Job.create(item['queue'], item['payload']['class'], *item['payload']['args'])
       end
+
+      def self.remove(index)
+        item = all(index)
+        Resque.mongo_failures.remove({:_id => item['_id']})
+      end
     end
   end
 end
