@@ -141,7 +141,7 @@ module Resque
   # Pushes a job onto a queue. Queue name should be a string and the
   # item should be any JSON-able Ruby object.
   def push(queue, item)
-    mongo << { :queue => queue.to_s, :item => encode(item) }
+    mongo.insert({ :queue => queue.to_s, :item => encode(item) })
   end
 
   # Pops a job off a queue. Queue name should be a string.
