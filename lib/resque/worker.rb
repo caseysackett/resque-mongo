@@ -157,12 +157,27 @@ module Resque
         job.perform
       rescue Object => e
         log "#{job.inspect} failed: #{e.inspect}"
-        begin
-          job.fail(e)
-        rescue Object => e
-          log "Received exception when reporting failure: #{e.inspect}"
+        
+        # Retry certain types of errors
+        if ['Timeout::Error','OpenSSL::SSL::SSLError'].include?(e.to_s)
+          begin
+            job.perform
+          rescue Object => e2
+            begin
+              job.fail(e2)
+            rescue Object => e2
+              log "Received exception when reporting failure: #{e2.inspect}"
+            end
+            failed!
+          end
+        else
+          begin
+            job.fail(e)
+          rescue Object => e
+            log "Received exception when reporting failure: #{e.inspect}"
+          end
+          failed!
         end
-        failed!
       else
         log "done: #{job.inspect}"
       ensure
