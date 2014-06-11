@@ -21,6 +21,21 @@ module Resque
   # Accepts a 'hostname:port' string or a Redis server.
   def mongo=(server)
     case server
+    when Moped::Session
+      @con = server
+      @db = @con
+      @mongo = @con['monque']
+      @workers = @db['workers']
+      @failures = @db['failures']
+      @stats = @db['stats']
+    when Mongo::Client
+      @con = server
+      @con.use("monque")
+      @db = @con
+      @mongo = @db['monque']
+      @workers = @db['workers']
+      @failures = @db['failures']
+      @stats = @db['stats']
     when Hash
       host, port = server['host'], server['port']
       @con = Mongo::Connection.new(host, port)
@@ -28,17 +43,22 @@ module Resque
         @con.add_auth('monque', server['username'], server['password'])
         @con.apply_saved_authentication
       end
+      @db = @con.db('monque')
+      @mongo = @db.collection('monque')
+      @workers = @db.collection('workers')
+      @failures = @db.collection('failures')
+      @stats = @db.collection('stats')
+      add_indexes
     when String
       host, port = server.split(':')
       @con = Mongo::Connection.new(host, port)
+      @db = @con.db('monque')
+      @mongo = @db.collection('monque')
+      @workers = @db.collection('workers')
+      @failures = @db.collection('failures')
+      @stats = @db.collection('stats')
+      add_indexes
     end
-    @db = @con.db('monque')
-    @mongo = @db.collection('monque')
-    @workers = @db.collection('workers')
-    @failures = @db.collection('failures')
-    @stats = @db.collection('stats')
-    
-    add_indexes
   end
 
 
@@ -121,9 +141,9 @@ module Resque
   alias :inline? :inline
 
   def add_indexes
-    @mongo.create_index :queue
-    @workers.create_index :worker
-    @stats.create_index :stat
+    @mongo.create_index :queue if @mongo.respond_to?(:create_index)
+    @workers.create_index :worker if @workers.respond_to?(:create_index)
+    @stats.create_index :stat if @stats.respond_to?(:create_index)
   end
 
   def drop
@@ -141,15 +161,28 @@ module Resque
   # Pushes a job onto a queue. Queue name should be a string and the
   # item should be any JSON-able Ruby object.
   def push(queue, item)
-    mongo.insert({ :queue => queue.to_s, :item => encode(item) })
+    if mongo.respond_to?(:insert)
+      # moped
+      mongo.insert({ :queue => queue.to_s, :item => encode(item) })
+    else
+      # mongo ruby driver
+      mongo << { :queue => queue.to_s, :item => encode(item) }
+    end
   end
 
   # Pops a job off a queue. Queue name should be a string.
   #
   # Returns a Ruby object.
   def pop(queue)
-    doc = mongo.find_and_modify( :query => { :queue => queue },
-                                 :remove => true )
+    doc = nil
+    if mongo.respond_to?(:find_and_modify)
+      # mongo ruby driver
+      doc = mongo.find_and_modify( :query => { :queue => queue },
+                                   :remove => true )
+    else
+      # moped
+      doc = mongo.find.modify({:queue => queue}, :remove => true)
+    end
     return nil if !doc
     decode doc['item']
   rescue Mongo::OperationFailure => e
@@ -187,12 +220,24 @@ module Resque
 
   # Returns an array of all known Resque queues as strings.
   def queues
-    mongo.distinct(:queue)
+    if mongo.respond_to?(:distinct)
+      # mongo ruby driver
+      mongo.distinct(:queue)
+    else
+      # moped
+      mongo.find.distinct(:queue)
+    end
   end
   
   # Given a queue name, completely deletes the queue.
   def remove_queue(queue)
-    mongo.remove(:queue => queue)
+    if mongo.respond_to?(:remove)
+      # mongo ruby driver
+      mongo.remove(:queue => queue)
+    else
+      # moped
+      mongo.find(:queue => queue).remove_all
+    end
   end
 
   #
