@@ -11,7 +11,7 @@ module Resque
 
     # Returns the int value of a stat, given a string stat name.
     def get(stat)
-      res = mongo_stats.find_one(:stat => stat)
+      res = mongo_stats.respond_to?(:find_one) ? mongo_stats.find_one(:stat => stat) : mongo_stats.find(:stat => stat).first
       return 0 unless res
       res['value'].to_i
     end
@@ -26,7 +26,11 @@ module Resque
     # Can optionally accept a second int parameter. The stat is then
     # incremented by that amount.
     def incr(stat, by = 1)
-      mongo_stats.update({:stat => stat}, {'$inc' => {:value => by}}, :upsert => true)
+      if mongo_stats.respond_to?(:update)
+        mongo_stats.update({:stat => stat}, {'$inc' => {:value => by}}, :upsert => true)
+      else
+        mongo_stats.find(:stat => stat).inc(:value => by)
+      end
     end
 
     # Increments a stat by one.
@@ -39,7 +43,11 @@ module Resque
     # Can optionally accept a second int parameter. The stat is then
     # decremented by that amount.
     def decr(stat, by = 1)
-      mongo_stats.update({:stat => stat}, {'$inc' => {:value => -by}})
+      if mongo_stats.respond_to?(:update)
+        mongo_stats.update({:stat => stat}, {'$inc' => {:value => -by}}, :upsert => true)
+      else
+        mongo_stats.find(:stat => stat).inc(:value => -by)
+      end
     end
 
     # Decrements a stat by one.
@@ -49,7 +57,11 @@ module Resque
 
     # Removes a stat from Redis, effectively setting it to 0.
     def clear(stat)
-      mongo_stats.remove(:stat => stat)
+      if mongo_stats.respond_to?(:remove)
+        mongo_stats.remove(:stat => stat)
+      else
+        mongo_stats.find(:stat => stat).remove
+      end
     end
   end
 end

@@ -130,7 +130,11 @@ module Resque
   attr_writer :after_fork
 
   def to_s
-    "Mongo Client connected to #{@con.host}"
+    if @con.respond_to?(:host)
+      "Mongo Client connected to #{@con.host}"
+    else
+      "Mongo Client connected to #{@con.inspect.gsub('<','').gsub('>','').html_safe}"
+    end
   end
 
   attr_accessor :inline
@@ -384,7 +388,7 @@ module Resque
       :workers   => workers.size.to_i,
       :working   => working.size,
       :failed    => Stat[:failed],
-      :servers   => ["#{@con.host}:#{@con.port}"],
+      :servers   => @con.respond_to?(:host) ? ["#{@con.host}:#{@con.port}"] : [@con.inspect.gsub('<','').gsub('>','').html_safe],
       :environment  => ENV['RAILS_ENV'] || ENV['RACK_ENV'] || 'development'
     }
   end

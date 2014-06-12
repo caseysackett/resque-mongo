@@ -14,10 +14,18 @@ module Resque
           :queue     => queue
         }
         begin
-          Resque.mongo_failures << data
+          if Resque.mongo_failures.respond_to?(:insert)
+            Resque.mongo_failures.insert(data)
+          else
+            Resque.mongo_failures << data
+          end
         rescue Exception => e
           data[:payload] = self.class.process_paypload(payload)
-          Resque.mongo_failures << data
+          if Resque.mongo_failures.respond_to?(:insert)
+            Resque.mongo_failures.insert(data)
+          else
+            Resque.mongo_failures << data
+          end
         end
       end
 
@@ -26,7 +34,11 @@ module Resque
       end
 
       def self.count
-        Resque.mongo_failures.count
+        if Resque.mongo_failures.respond_to?(:count)
+          Resque.mongo_failures.count
+        else
+          Resque.mongo_failures.find.count
+        end
       end
 
       def self.all(start = 0, count = 1)
@@ -36,19 +48,31 @@ module Resque
       end
 
       def self.clear
-        Resque.mongo_failures.remove
+        if Resque.mongo_failures.respond_to?(:remove)
+          Resque.mongo_failures.remove
+        else
+          Resque.mongo_failures.find.remove
+        end
       end
 
       def self.requeue(index)
         item = all(index)
         item['retried_at'] = Time.now.strftime("%Y/%m/%d %H:%M:%S")
-        Resque.mongo_failures.update({:_id => item['_id']}, item)
+        if Resque.mongo_failures.respond_to?(:update)
+          Resque.mongo_failures.update({:_id => item['_id']}, item)
+        else
+          Resque.mongo_failures.find(:_id => item['_id']).update(item)
+        end
         Job.create(item['queue'], item['payload']['class'], *item['payload']['args'])
       end
 
       def self.remove(index)
         item = all(index)
-        Resque.mongo_failures.remove({:_id => item['_id']})
+        if Resque.mongo_failures.respond_to?(:remove)
+          Resque.mongo_failures.remove({:_id => item['_id']})
+        else
+          Resque.mongo_failures.find(:_id => item['_id']).remove
+        end
       end
     end
   end

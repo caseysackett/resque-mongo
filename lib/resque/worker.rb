@@ -22,9 +22,21 @@ module Resque
 
     attr_writer :to_s
 
+    def self.next_worker(worker_id)
+      if mongo_workers.respond_to?(:find_one)
+        mongo_workers.find_one(:worker => worker_id)
+      else
+        mongo_workers.find(:worker => worker_id).first
+      end
+    end
+
     # Returns an array of all worker objects.
     def self.all
-      mongo_workers.distinct(:worker).map { |worker| find(worker) }.compact
+      if mongo_workers.respond_to?(:distinct)
+        mongo_workers.distinct(:worker).map { |worker| find(worker) }.compact
+      else
+        mongo_workers.find.distinct(:worker).map { |worker| find(worker) }.compact
+      end
     end
 
     # Returns an array of all worker objects currently processing
@@ -39,7 +51,7 @@ module Resque
 
     # Returns a single worker object. Accepts a string id.
     def self.find(worker_id)
-      worker = mongo_workers.find_one(:worker => worker_id)
+      worker = next_worker(worker_id)
       return nil unless worker
       queues = worker['worker'].split(',')
       worker = new(*queues)
@@ -55,7 +67,7 @@ module Resque
     # # Given a string worker id, return a boolean indicating whether the
     # # worker exists
     def self.exists?(worker_id)
-      not mongo_workers.find_one(:worker => worker_id.to_s).nil?
+      not next_worker(worker_id).nil?
     end
 
     # Workers should be initialized with an array of string queue
@@ -426,7 +438,7 @@ module Resque
 
     # What time did this worker start? Returns an instance of `Time`
     def started
-      worker = mongo_workers.find_one(:worker => self.to_s)
+      worker = self.class.next_worker(self.to_s)
       return nil if !worker
       worker['started']
     end
@@ -439,7 +451,7 @@ module Resque
 
     # Returns a hash explaining the Job we're currently processing, if any.
     def job
-      worker = mongo_workers.find_one(:worker => self.to_s)
+      worker = self.class.next_worker(self.to_s)
       return {} if !worker
       decode(worker['working_on']) || {}
     end
@@ -458,7 +470,7 @@ module Resque
     # Returns a symbol representing the current worker state,
     # which can be either :working or :idle
     def state
-      worker = mongo_workers.find_one(:worker => self.to_s)
+      worker = self.class.next_worker(self.to_s)
       worker ? :working : :idle
     end
 
