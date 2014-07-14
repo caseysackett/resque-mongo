@@ -185,7 +185,7 @@ module Resque
                                    :remove => true )
     else
       # moped
-      doc = mongo.find.modify({:queue => queue}, :remove => true)
+      doc = mongo.find({:queue => queue}).modify({}, :remove => true)
     end
     return nil if !doc
     decode doc['item']
