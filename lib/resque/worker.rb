@@ -388,7 +388,7 @@ module Resque
         job.fail(DirtyExit.new)
       end
 
-      mongo_workers.remove(:worker => self.to_s)
+      mongo_workers.find(:worker => self.to_s).remove
 
       Stat.clear("processed:#{self}")
       Stat.clear("failed:#{self}")
@@ -446,7 +446,7 @@ module Resque
     # Tell Redis we've started
     def started!
       started = {'started' => Time.now.to_s}
-      mongo_workers.update({:worker => self.to_s},  {'$set' => started})
+      mongo_workers.find({:worker => self.to_s}).update({'$set' => started})
     end
 
     # Returns a hash explaining the Job we're currently processing, if any.
