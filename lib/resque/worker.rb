@@ -411,7 +411,7 @@ module Resque
     def done_working
       processed!
       working_on = {'working_on' => 1}
-      mongo_workers.find({:worker =>  self.to_s}.update({'$unset' => working_on})
+      mongo_workers.find({:worker =>  self.to_s}).update({'$unset' => working_on})
     end
 
     # How many jobs has this worker processed? Returns an int.
