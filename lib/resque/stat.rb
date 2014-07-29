@@ -29,7 +29,7 @@ module Resque
       if mongo_stats.respond_to?(:update)
         mongo_stats.update({:stat => stat}, {'$inc' => {:value => by}}, :upsert => true)
       else
-        mongo_stats.find(:stat => stat).inc(:value => by)
+        mongo_stats.find(:stat => stat).update({'$inc' => {:value => by}}, :upsert => true)
       end
     end
 
@@ -46,7 +46,7 @@ module Resque
       if mongo_stats.respond_to?(:update)
         mongo_stats.update({:stat => stat}, {'$inc' => {:value => -by}}, :upsert => true)
       else
-        mongo_stats.find(:stat => stat).inc(:value => -by)
+        mongo_stats.find(:stat => stat).update({'$inc' => {:value => -by}}, :upsert => true)
       end
     end
 

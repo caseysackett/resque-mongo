@@ -403,7 +403,7 @@ module Resque
         :run_at  => Time.now.to_s,
         :payload => job.payload
       working_on = {'working_on' => data}
-      mongo_workers.update({:worker => self.to_s},  {'$set' => working_on}, :upsert => true )
+      mongo_workers.find({:worker => self.to_s}).update({'$set' => working_on}, :upsert => true)
     end
 
     # Called when we are done working - clears our `working_on` state
@@ -411,7 +411,7 @@ module Resque
     def done_working
       processed!
       working_on = {'working_on' => 1}
-      mongo_workers.update({:worker =>  self.to_s}, {'$unset' => working_on})
+      mongo_workers.find({:worker =>  self.to_s}.update({'$unset' => working_on})
     end
 
     # How many jobs has this worker processed? Returns an int.
