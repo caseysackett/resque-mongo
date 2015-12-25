@@ -21,13 +21,6 @@ module Resque
   # Accepts a 'hostname:port' string or a Redis server.
   def mongo=(server)
     case server
-    when Moped::Session
-      @con = server
-      @db = @con
-      @mongo = @con['monque']
-      @workers = @db['workers']
-      @failures = @db['failures']
-      @stats = @db['stats']
     when Mongo::Client
       @con = server
       @con.use("monque")
@@ -165,13 +158,8 @@ module Resque
   # Pushes a job onto a queue. Queue name should be a string and the
   # item should be any JSON-able Ruby object.
   def push(queue, item)
-    if mongo.respond_to?(:insert)
-      # moped
-      mongo.insert({ :queue => queue.to_s, :item => encode(item) })
-    else
-      # mongo ruby driver
-      mongo << { :queue => queue.to_s, :item => encode(item) }
-    end
+    # mongo ruby driver
+    mongo.insert_one({ :queue => queue.to_s, :item => encode(item) })
   end
 
   # Pops a job off a queue. Queue name should be a string.
@@ -179,14 +167,7 @@ module Resque
   # Returns a Ruby object.
   def pop(queue)
     doc = nil
-    if mongo.respond_to?(:find_and_modify)
-      # mongo ruby driver
-      doc = mongo.find_and_modify( :query => { :queue => queue },
-                                   :remove => true )
-    else
-      # moped
-      doc = mongo.find({:queue => queue}).modify({}, :remove => true)
-    end
+    doc = mongo.find(:queue => queue).find_one_and_delete
     return nil if !doc
     decode doc['item']
   rescue Mongo::OperationFailure => e
@@ -224,24 +205,12 @@ module Resque
 
   # Returns an array of all known Resque queues as strings.
   def queues
-    if mongo.respond_to?(:distinct)
-      # mongo ruby driver
-      mongo.distinct(:queue)
-    else
-      # moped
-      mongo.find.distinct(:queue)
-    end
+    mongo.find.distinct(:queue)
   end
   
   # Given a queue name, completely deletes the queue.
   def remove_queue(queue)
-    if mongo.respond_to?(:remove)
-      # mongo ruby driver
-      mongo.remove(:queue => queue)
-    else
-      # moped
-      mongo.find(:queue => queue).remove_all
-    end
+    mongo.find(:queue => queue).remove_all
   end
 
   #
