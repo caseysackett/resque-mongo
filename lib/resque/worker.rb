@@ -362,7 +362,7 @@ module Resque
     # Registers ourself as a worker. Useful when entering the worker
     # lifecycle on startup.
     def register_worker
-      mongo_workers.insert(:worker => self.to_s)
+      mongo_workers.insert_one({:worker => self.to_s})
       started!
     end
 
@@ -388,7 +388,7 @@ module Resque
         job.fail(DirtyExit.new)
       end
 
-      mongo_workers.find(:worker => self.to_s).remove
+      mongo_workers.find(:worker => self.to_s).delete_one
 
       Stat.clear("processed:#{self}")
       Stat.clear("failed:#{self}")
@@ -446,7 +446,7 @@ module Resque
     # Tell Redis we've started
     def started!
       started = {'started' => Time.now.to_s}
-      mongo_workers.find({:worker => self.to_s}).update({'$set' => started})
+      mongo_workers.find({:worker => self.to_s}).update_one({'$set' => started})
     end
 
     # Returns a hash explaining the Job we're currently processing, if any.
